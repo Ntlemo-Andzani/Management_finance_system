@@ -1,0 +1,37 @@
+%% MFMS — Sequence diagram: approval and disbursement generating the schedule.
+sequenceDiagram
+    autonumber
+    actor Manager
+    participant UI as Loans screen
+    participant Ctrl as LoanController
+    participant Svc as LoanService
+    participant Fac as ScheduleFactory
+    participant Str as InterestStrategy
+    participant DB as Database
+    participant Bus as EventBus
+
+    Manager->>UI: opens pending application
+    UI->>Ctrl: POST /api/loans/:id/approve
+    Ctrl->>Svc: approve(loanId, actor)
+    Svc->>DB: SELECT loan
+    Svc->>Svc: assert status = pending
+    Svc->>Svc: assert actor is not the capturing officer
+    Svc->>DB: UPDATE loans SET status='approved'
+    Svc->>Bus: publish("loan.approved")
+    Svc-->>UI: approved loan
+
+    Manager->>UI: confirms disbursement date
+    UI->>Ctrl: POST /api/loans/:id/disburse
+    Ctrl->>Svc: disburse(loanId, date, actor)
+    Svc->>DB: BEGIN TRANSACTION
+    Svc->>Fac: create(principal, rate, term, frequency, method, startDate)
+    Fac->>Fac: periodsFor(term, frequency)
+    Fac->>Str: buildInstallments(...)
+    Str-->>Fac: instalment rows (reconciled to the cent)
+    Fac-->>Svc: schedule + totals
+    Svc->>DB: bulk INSERT repayment_schedule
+    Svc->>DB: UPDATE loans (status='active', totals, maturity_date)
+    DB-->>Svc: COMMIT
+    Svc->>Bus: publish("loan.disbursed")
+    Svc-->>UI: active loan with schedule
+    UI-->>Manager: passbook schedule rendered

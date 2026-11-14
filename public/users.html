@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff & access · KhupFin</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="img/favicon-180.png">
+<meta name="theme-color" content="#0C4A3E">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail"></aside>
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Staff &amp; access</h1>
+        <p>Who can sign in, and what each role is allowed to do.</p>
+      </div>
+      <div class="page-actions"><button class="btn" id="newUserBtn">Add a staff member</button></div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-body is-flush table-scroll">
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Branch</th><th>Last signed in</th><th>Status</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>What each role can do</h2></div>
+      <div class="panel-body is-flush table-scroll">
+        <table>
+          <thead><tr><th>Action</th><th>Admin</th><th>Manager</th><th>Officer</th><th>Teller</th></tr></thead>
+          <tbody>
+            <tr><td>Register and edit clients</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td></tr>
+            <tr><td>Change client status / blacklist</td><td>Yes</td><td>Yes</td><td>No</td><td>No</td></tr>
+            <tr><td>Capture a loan application</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td></tr>
+            <tr><td>Approve or reject a loan</td><td>Yes</td><td>Yes</td><td>No</td><td>No</td></tr>
+            <tr><td>Disburse funds</td><td>Yes</td><td>Yes</td><td>No</td><td>No</td></tr>
+            <tr><td>Record a repayment</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Post savings transactions</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Write off a loan</td><td>Yes</td><td>No</td><td>No</td><td>No</td></tr>
+            <tr><td>Manage staff accounts</td><td>Yes</td><td>No</td><td>No</td><td>No</td></tr>
+            <tr><td>View the audit trail</td><td>Yes</td><td>No</td><td>No</td><td>No</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="userModal">
+  <div class="modal">
+    <div class="modal-head"><h2>Add a staff member</h2><button type="button" data-close="userModal">&times;</button></div>
+    <form id="userForm">
+      <div class="modal-body">
+        <div class="field"><label for="full_name">Full name</label><input id="full_name" name="full_name" required><div class="err"></div></div>
+        <div class="field-row">
+          <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" required><div class="err"></div></div>
+          <div class="field"><label for="phone">Phone</label><input id="phone" name="phone"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="role">Role</label>
+            <select id="role" name="role">
+              <option value="officer">Officer</option>
+              <option value="teller">Teller</option>
+              <option value="manager">Manager</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </div>
+          <div class="field"><label for="branch_id">Branch</label><select id="branch_id" name="branch_id"></select></div>
+        </div>
+        <div class="field">
+          <label for="password">Temporary password</label>
+          <input id="password" name="password" type="text" required minlength="8">
+          <div class="help">At least 8 characters. The user should change it after their first sign in.</div>
+          <div class="err"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn is-ghost" data-close="userModal">Cancel</button>
+        <button type="submit" class="btn">Create account</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+bootPage(async () => {
+  if (!Session.can('admin')) { toast('Staff management is limited to administrators', 'bad'); window.location.href = 'dashboard.html'; return; }
+  const branches = (await Api.get('/branches')).data;
+  document.getElementById('branch_id').innerHTML = branches.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  await load();
+});
+
+document.getElementById('newUserBtn').addEventListener('click', () => openOverlay('userModal'));
+
+async function load() {
+  const { data } = await Api.get('/users');
+  document.getElementById('rows').innerHTML = data.map((u) => `
+    <tr>
+      <td><strong>${esc(u.full_name)}</strong><span class="sub num">${esc(u.phone || '')}</span></td>
+      <td class="num">${esc(u.email)}</td>
+      <td>${pill(u.role)}</td>
+      <td>${esc(u.branch_name)}</td>
+      <td>${u.last_login_at ? fmt.date(u.last_login_at) : 'Never'}</td>
+      <td>${u.is_active ? pill('active') : pill('inactive')}</td>
+      <td class="t-right"><button class="btn is-ghost is-small" data-id="${u.id}" data-active="${u.is_active ? 0 : 1}">
+        ${u.is_active ? 'Deactivate' : 'Restore'}</button></td>
+    </tr>`).join('');
+
+  document.querySelectorAll('#rows button[data-id]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      try {
+        const res = await Api.patch(`/users/${b.dataset.id}/active`, { is_active: Number(b.dataset.active) === 1 });
+        toast(res.message);
+        await load();
+      } catch (err) { toast(err.message, 'bad'); }
+    });
+  });
+}
+
+document.getElementById('userForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await Api.post('/users', formData(e.target));
+    toast('Staff account created');
+    e.target.reset();
+    closeOverlay('userModal');
+    await load();
+  } catch (err) { showFieldErrors(e.target, err.errors); toast(err.message, 'bad'); }
+});
+</script>
+</body>
+</html>

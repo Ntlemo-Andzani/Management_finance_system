@@ -1,0 +1,33 @@
+%% MFMS — Context Diagram (DFD Level 0)
+%% The whole system as a single process, showing every external entity it exchanges data with.
+flowchart LR
+    OFFICER([Loan Officer])
+    MANAGER([Branch Manager])
+    TELLER([Teller])
+    ADMIN([System Administrator])
+    CLIENT([Client / Borrower])
+    SMS([SMS Gateway])
+    BANK([Bank / Cash Office])
+
+    SYSTEM(("0<br/>Microfinance<br/>Management<br/>System"))
+
+    OFFICER -- "client details, loan application" --> SYSTEM
+    SYSTEM  -- "loan quote, client register, schedule" --> OFFICER
+
+    MANAGER -- "approval / rejection decision, disbursement instruction" --> SYSTEM
+    SYSTEM  -- "approval queue, arrears register, portfolio reports" --> MANAGER
+
+    TELLER  -- "repayment received, savings deposit / withdrawal" --> SYSTEM
+    SYSTEM  -- "amount due today, receipt, passbook balance" --> TELLER
+
+    ADMIN   -- "staff account, role assignment" --> SYSTEM
+    SYSTEM  -- "audit trail, user list" --> ADMIN
+
+    CLIENT  -- "cash, KYC documents, ID" --> TELLER
+    TELLER  -- "printed receipt" --> CLIENT
+
+    SYSTEM  -- "notification message" --> SMS
+    SMS     -- "delivery status" --> SYSTEM
+
+    SYSTEM  -- "disbursement voucher" --> BANK
+    BANK    -- "payment confirmation" --> SYSTEM

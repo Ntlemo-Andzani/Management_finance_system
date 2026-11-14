@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Savings · KhupFin</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="img/favicon-180.png">
+<meta name="theme-color" content="#0C4A3E">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail"></aside>
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Savings</h1>
+        <p>Passbook accounts: open one, take a deposit, pay out a withdrawal.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn is-ghost" id="openBtn">Open an account</button>
+        <button class="btn" id="txnBtn">Post a transaction</button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Account number or client name">
+    </div>
+
+    <section class="panel">
+      <div class="panel-body is-flush table-scroll">
+        <table>
+          <thead>
+            <tr><th>Account</th><th>Client</th><th class="t-right">Balance</th>
+                <th class="t-right">Interest rate</th><th>Opened</th><th>Status</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="openModal">
+  <div class="modal">
+    <div class="modal-head"><h2>Open a savings account</h2><button type="button" data-close="openModal">&times;</button></div>
+    <form id="openForm">
+      <div class="modal-body">
+        <div class="field"><label for="client_id">Client</label><select id="client_id" name="client_id" required></select><div class="err"></div></div>
+        <div class="field-row">
+          <div class="field"><label for="interest_rate">Interest rate (% a year)</label><input id="interest_rate" name="interest_rate" type="number" step="0.1" value="4.5"></div>
+          <div class="field"><label for="opening_deposit">Opening deposit (R)</label><input id="opening_deposit" name="opening_deposit" type="number" step="0.01" min="0" value="0"><div class="err"></div></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn is-ghost" data-close="openModal">Cancel</button>
+        <button type="submit" class="btn">Open account</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="txnModal">
+  <div class="modal">
+    <div class="modal-head"><h2>Post a transaction</h2><button type="button" data-close="txnModal">&times;</button></div>
+    <form id="txnForm">
+      <div class="modal-body">
+        <div class="field"><label for="account_id">Account</label><select id="account_id" name="account_id" required></select></div>
+        <div class="field-row">
+          <div class="field"><label for="type">Type</label>
+            <select id="type" name="type">
+              <option value="deposit">Deposit</option>
+              <option value="withdrawal">Withdrawal</option>
+              <option value="interest">Interest credit</option>
+              <option value="fee">Fee</option>
+            </select>
+          </div>
+          <div class="field"><label for="amount">Amount (R)</label><input id="amount" name="amount" type="number" step="0.01" min="0.01" required><div class="err"></div></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="txn_date">Date</label><input id="txn_date" name="txn_date" type="date"></div>
+          <div class="field"><label for="reference">Reference</label><input id="reference" name="reference"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn is-ghost" data-close="txnModal">Cancel</button>
+        <button type="submit" class="btn">Post transaction</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="stmtModal">
+  <div class="modal">
+    <div class="modal-head"><h2 id="stmtTitle">Statement</h2><button type="button" data-close="stmtModal">&times;</button></div>
+    <div class="modal-body" id="stmtBody"></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+bootPage(async () => {
+  document.getElementById('txn_date').value = fmt.dateInput();
+  const clients = (await Api.get('/clients?limit=500')).data;
+  document.getElementById('client_id').innerHTML =
+    '<option value="">Select a client…</option>' +
+    clients.map((c) => `<option value="${c.id}">${esc(c.first_name)} ${esc(c.last_name)} (${esc(c.client_no)})</option>`).join('');
+  await load();
+});
+
+document.getElementById('openBtn').addEventListener('click', () => openOverlay('openModal'));
+document.getElementById('txnBtn').addEventListener('click', () => openOverlay('txnModal'));
+let timer;
+document.getElementById('search').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 250); });
+
+async function load() {
+  const q = encodeURIComponent(document.getElementById('search').value);
+  const { data } = await Api.get(`/savings?q=${q}`);
+
+  document.getElementById('rows').innerHTML = data.length ? data.map((a) => `
+    <tr class="is-clickable" data-id="${a.id}">
+      <td class="num">${esc(a.account_no)}</td>
+      <td>${esc(a.client_name)}<span class="sub num">${esc(a.client_no)} · ${esc(a.phone)}</span></td>
+      <td class="t-right num"><strong>${fmt.money(a.balance)}</strong></td>
+      <td class="t-right num">${Number(a.interest_rate).toFixed(2)}%</td>
+      <td>${fmt.date(a.opened_at)}</td>
+      <td>${pill(a.status)}</td>
+    </tr>`).join('') : emptyRow(6, 'No savings accounts yet', 'Open one for a registered client.');
+
+  document.getElementById('account_id').innerHTML =
+    data.map((a) => `<option value="${a.id}">${esc(a.account_no)} — ${esc(a.client_name)} (${fmt.money(a.balance)})</option>`).join('');
+
+  document.querySelectorAll('#rows tr[data-id]').forEach((tr) =>
+    tr.addEventListener('click', () => statement(tr.dataset.id)));
+}
+
+document.getElementById('openForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const res = await Api.post('/savings', formData(e.target));
+    toast(res.message);
+    e.target.reset();
+    closeOverlay('openModal');
+    await load();
+  } catch (err) { showFieldErrors(e.target, err.errors); toast(err.message, 'bad'); }
+});
+
+document.getElementById('txnForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const res = await Api.post('/savings/transactions', formData(e.target));
+    toast(res.message);
+    e.target.amount.value = '';
+    closeOverlay('txnModal');
+    await load();
+  } catch (err) { showFieldErrors(e.target, err.errors); toast(err.message, 'bad'); }
+});
+
+async function statement(id) {
+  const { data: a } = await Api.get(`/savings/${id}/statement`);
+  document.getElementById('stmtTitle').textContent = `${a.account_no} · ${fmt.money(a.balance)}`;
+  document.getElementById('stmtBody').innerHTML = a.transactions.length ? `
+    <div class="table-scroll"><table>
+      <thead><tr><th>Date</th><th>Type</th><th class="t-right">Amount</th><th class="t-right">Balance</th><th>Reference</th><th>By</th></tr></thead>
+      <tbody>${a.transactions.map((t) => `<tr>
+        <td>${fmt.date(t.txn_date)}</td>
+        <td>${pill(t.type === 'withdrawal' || t.type === 'fee' ? 'partial' : 'active')} ${fmt.title(t.type)}</td>
+        <td class="t-right num">${t.type === 'withdrawal' || t.type === 'fee' ? '−' : '+'}${fmt.money(t.amount)}</td>
+        <td class="t-right num">${fmt.money(t.balance_after)}</td>
+        <td>${esc(t.reference || '—')}</td>
+        <td>${esc(t.performed_by_name)}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="empty"><strong>No transactions</strong>Post a deposit to start this passbook.</div>';
+  openOverlay('stmtModal');
+}
+</script>
+</body>
+</html>

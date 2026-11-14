@@ -1,0 +1,26 @@
+%% MFMS — State diagram for the Loan aggregate.
+%% Every transition below is enforced in LoanService / RepaymentService.
+stateDiagram-v2
+    [*] --> pending : officer captures application
+
+    pending --> approved : manager approves<br/>(cannot be own application)
+    pending --> rejected : manager rejects with reason
+    rejected --> [*]
+
+    approved --> active : funds disbursed<br/>/ schedule generated
+
+    active --> active : repayment posted<br/>(penalty, interest, principal)
+    active --> closed : outstanding balance reaches zero
+    active --> defaulted : instalments unpaid past tolerance
+    active --> written_off : administrator writes off
+
+    defaulted --> active : client resumes payment
+    defaulted --> written_off : recovery abandoned
+
+    closed --> [*]
+    written_off --> [*]
+
+    note right of active
+        Payments are only accepted
+        while the loan is active.
+    end note

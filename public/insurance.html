@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Insurance · KhupFin</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="img/favicon-180.png">
+<meta name="theme-color" content="#0C4A3E">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail"></aside>
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Credit life</h1>
+        <p>Cover issued with every insured loan, and the claims lodged against it.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn" id="lodgeBtn">Lodge a claim</button>
+      </div>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Claims</h2>
+        <span class="hint">Lodged → assessed → settled</span>
+      </div>
+      <div class="panel-body is-flush table-scroll">
+        <table>
+          <thead>
+            <tr><th>Claim</th><th>Client</th><th>Policy</th><th>Type</th>
+                <th>Incident</th><th class="t-right">Claimed</th>
+                <th class="t-right">Approved</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="claimRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Policies in force</h2>
+        <span class="hint" id="policyHint"></span>
+      </div>
+      <div class="toolbar" style="padding:14px 18px 0;margin:0">
+        <input id="search" type="search" placeholder="Policy, loan number or client name">
+        <select id="statusFilter">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="claimed">Claimed</option>
+          <option value="expired">Expired</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="panel-body is-flush table-scroll">
+        <table>
+          <thead>
+            <tr><th>Policy</th><th>Client</th><th>Loan</th><th>Basis</th>
+                <th class="t-right">Cover now</th><th class="t-right">Premium</th><th>Status</th></tr>
+          </thead>
+          <tbody id="policyRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- lodge a claim ------------------------------------------------------- -->
+<div class="overlay" id="lodgeModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Lodge a claim</h2>
+      <button type="button" data-close="lodgeModal">&times;</button>
+    </div>
+    <form id="lodgeForm">
+      <div class="modal-body">
+        <div class="field">
+          <label for="policy_id">Policy</label>
+          <select id="policy_id" name="policy_id" required></select>
+          <div class="help">Only policies with cover still in force are listed.</div>
+          <div class="err"></div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="claim_type">Claim type</label>
+            <select id="claim_type" name="claim_type">
+              <option value="death">Death</option>
+              <option value="permanent_disability">Permanent disability</option>
+              <option value="retrenchment">Retrenchment</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="incident_date">Date of incident</label>
+            <input id="incident_date" name="incident_date" type="date" required>
+            <div class="err"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="notes">Supporting notes</label>
+          <input id="notes" name="notes" placeholder="Death certificate reference, hospital report…">
+        </div>
+        <div id="coverPreview"></div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn is-ghost" data-close="lodgeModal">Cancel</button>
+        <button type="submit" class="btn">Lodge claim</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- claim detail -------------------------------------------------------- -->
+<div class="overlay" id="claimModal">
+  <div class="modal is-wide">
+    <div class="modal-head">
+      <h2 id="claimTitle">Claim</h2>
+      <button type="button" data-close="claimModal">&times;</button>
+    </div>
+    <div class="modal-body" id="claimBody"></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+let policies = [];
+
+bootPage(async () => {
+  document.getElementById('incident_date').value = fmt.dateInput();
+  await Promise.all([loadSummary(), loadPolicies(), loadClaims()]);
+});
+
+document.getElementById('lodgeBtn').addEventListener('click', () => openOverlay('lodgeModal'));
+document.getElementById('statusFilter').addEventListener('change', loadPolicies);
+let timer;
+document.getElementById('search').addEventListener('input', () => {
+  clearTimeout(timer); timer = setTimeout(loadPolicies, 250);
+});
+
+async function loadSummary() {
+  const { data: s } = await Api.get('/insurance/summary');
+  document.getElementById('stats').innerHTML = `
+    <div class="stat">
+      <div class="k">Cover in force</div>
+      <div class="v">${fmt.money(s.cover_in_force)}</div>
+      <div class="s">${s.active_policies} active policies</div>
+    </div>
+    <div class="stat">
+      <div class="k">Premiums written</div>
+      <div class="v">${fmt.money(s.premiums_written)}</div>
+      <div class="s">deducted at disbursement</div>
+    </div>
+    <div class="stat ${Number(s.open_claims) > 0 ? 'is-gold' : ''}">
+      <div class="k">Open claims</div>
+      <div class="v">${s.open_claims}</div>
+      <div class="s">awaiting assessment</div>
+    </div>
+    <div class="stat">
+      <div class="k">Claims paid</div>
+      <div class="v">${fmt.money(s.claims_paid)}</div>
+      <div class="s">settled to date</div>
+    </div>`;
+}
+
+async function loadPolicies() {
+  const q = encodeURIComponent(document.getElementById('search').value);
+  const status = document.getElementById('statusFilter').value;
+  const { data } = await Api.get(`/insurance/policies?q=${q}&status=${status}`);
+  policies = data;
+
+  document.getElementById('policyHint').textContent = `${data.length} policies`;
+  document.getElementById('policyRows').innerHTML = data.length ? data.map((p) => `
+    <tr>
+      <td class="num">${esc(p.policy_no)}<span class="sub">${fmt.date(p.start_date)} – ${fmt.date(p.end_date)}</span></td>
+      <td>${esc(p.client_name)}<span class="sub num">${esc(p.client_no)}</span></td>
+      <td class="num">${esc(p.loan_no)}<span class="sub">${fmt.money(p.outstanding_balance)} owing</span></td>
+      <td>${p.cover_method === 'declining'
+            ? '<span class="pill is-mute">Declining</span>'
+            : '<span class="pill">Flat</span>'}
+          <span class="sub">${Number(p.premium_rate_pct).toFixed(2)}% a year</span></td>
+      <td class="t-right num"><strong>${fmt.money(p.current_cover)}</strong></td>
+      <td class="t-right num">${fmt.money(p.premium)}</td>
+      <td>${pill(p.status)}</td>
+    </tr>`).join('')
+    : emptyRow(7, 'No policies yet', 'Cover is issued automatically when an insured loan is disbursed.');
+
+  // only live cover can be claimed against
+  const open = data.filter((p) => p.status === 'active');
+  document.getElementById('policy_id').innerHTML = open.length
+    ? open.map((p) => `<option value="${p.id}" data-cover="${p.current_cover}" data-method="${p.cover_method}">
+         ${esc(p.policy_no)} — ${esc(p.client_name)} (${fmt.money(p.current_cover)} cover)</option>`).join('')
+    : '<option value="">No active policies</option>';
+  describeCover();
+}
+
+document.getElementById('policy_id').addEventListener('change', describeCover);
+
+function describeCover() {
+  const opt = document.getElementById('policy_id').selectedOptions[0];
+  const host = document.getElementById('coverPreview');
+  if (!opt || !opt.dataset.cover) { host.innerHTML = ''; return; }
+  const method = opt.dataset.method === 'declining'
+    ? 'Cover follows the outstanding balance, so it settles the loan exactly.'
+    : 'Cover is fixed for the term, so anything above the balance goes to the nominated family.';
+  host.innerHTML = `
+    <div class="stat" style="margin-top:6px">
+      <div class="k">Cover available</div>
+      <div class="v">${fmt.money(opt.dataset.cover)}</div>
+      <div class="s">${method}</div>
+    </div>`;
+}
+
+async function loadClaims() {
+  const { data } = await Api.get('/insurance/claims');
+  document.getElementById('claimRows').innerHTML = data.length ? data.map((c) => {
+    let action = '';
+    if (['lodged', 'assessing'].includes(c.status) && Session.can('admin', 'manager')) {
+      action = `<button class="btn is-small" data-assess="${c.id}">Assess</button>`;
+    } else if (c.status === 'approved' && Session.can('admin')) {
+      action = `<button class="btn is-small" data-settle="${c.id}">Settle</button>`;
+    }
+    return `<tr class="is-clickable" data-claim="${c.id}">
+      <td class="num">${esc(c.claim_no)}<span class="sub">${fmt.date(c.lodged_at)}</span></td>
+      <td>${esc(c.client_name)}<span class="sub num">${esc(c.client_no)}</span></td>
+      <td class="num">${esc(c.policy_no)}</td>
+      <td>${fmt.title(c.claim_type)}</td>
+      <td>${fmt.date(c.incident_date)}</td>
+      <td class="t-right num">${fmt.money(c.claimed_amount)}</td>
+      <td class="t-right num">${Number(c.approved_amount) ? fmt.money(c.approved_amount) : '—'}</td>
+      <td>${pill(c.status)}</td>
+      <td class="t-right">${action}</td>
+    </tr>`;
+  }).join('') : emptyRow(9, 'No claims lodged', 'A claim can be lodged against any policy with cover in force.');
+
+  document.querySelectorAll('[data-claim]').forEach((tr) => {
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      showClaim(tr.dataset.claim);
+    });
+  });
+  document.querySelectorAll('[data-assess]').forEach((b) =>
+    b.addEventListener('click', (e) => { e.stopPropagation(); assess(b.dataset.assess); }));
+  document.querySelectorAll('[data-settle]').forEach((b) =>
+    b.addEventListener('click', (e) => { e.stopPropagation(); settle(b.dataset.settle); }));
+}
+
+document.getElementById('lodgeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  try {
+    const res = await Api.post('/insurance/claims', formData(form));
+    toast(res.message);
+    closeOverlay('lodgeModal');
+    await Promise.all([loadSummary(), loadPolicies(), loadClaims()]);
+  } catch (err) {
+    showFieldErrors(form, err.errors);
+    toast(err.message, 'bad');
+  }
+});
+
+async function assess(id) {
+  const approve = confirm('Approve this claim?\n\nOK to approve, Cancel to reject.');
+  const body = { decision: approve ? 'approve' : 'reject' };
+  const notes = prompt(approve ? 'Assessment notes (optional)' : 'Why is the claim rejected?');
+  if (!approve && !notes) return;
+  if (notes) body.notes = notes;
+  try {
+    const res = await Api.post(`/insurance/claims/${id}/assess`, body);
+    toast(res.message);
+    await loadClaims();
+  } catch (err) { toast(err.message, 'bad'); }
+}
+
+async function settle(id) {
+  if (!confirm('Settle this claim?\n\nThe loan will be cleared and any surplus split across the nominated beneficiaries. This cannot be undone.')) return;
+  try {
+    const res = await Api.post(`/insurance/claims/${id}/settle`, {});
+    toast(res.message);
+    showSettlement(res.data);
+    await Promise.all([loadSummary(), loadPolicies(), loadClaims()]);
+  } catch (err) { toast(err.message, 'bad'); }
+}
+
+function showSettlement(d) {
+  document.getElementById('claimTitle').textContent = `${d.claim_no} · settled`;
+  document.getElementById('claimBody').innerHTML = `
+    <div class="receipt">
+      <h3>Settlement advice</h3>
+      <div class="num" style="font-size:12.5px;color:var(--ink-soft)">${esc(d.claim_no)} · ${esc(d.policy_no)}</div>
+      <div class="amount">${fmt.money(d.approved_amount)}</div>
+      <div style="font-size:13px;color:var(--ink-soft)">approved on the credit life policy for ${esc(d.client_name)}</div>
+      <div class="cut"></div>
+      <dl class="kv">
+        <dt>Applied to loan ${esc(d.loan_no)}</dt><dd>${fmt.money(d.loan_settled)}</dd>
+        <dt>Surplus to the family</dt><dd>${fmt.money(d.paid_to_family)}</dd>
+      </dl>
+      ${(d.distribution || []).length ? `
+        <div class="cut"></div>
+        <h3 style="font-size:13px">Distribution</h3>
+        <table style="margin-top:8px"><tbody>
+          ${d.distribution.map((b) => `<tr>
+            <td>${esc(b.full_name)}<span class="sub">${esc(fmt.title(b.relationship))}</span></td>
+            <td class="t-right num">${Number(b.share_pct).toFixed(2)}%</td>
+            <td class="t-right num"><strong>${fmt.money(b.amount)}</strong></td></tr>`).join('')}
+        </tbody></table>` : ''}
+      <div class="cut"></div>
+      <button class="btn is-ghost is-small" onclick="window.print()">Print advice</button>
+    </div>`;
+  openOverlay('claimModal');
+}
+
+async function showClaim(id) {
+  const { data } = await Api.get('/insurance/claims');
+  const c = data.find((x) => x.id === Number(id));
+  if (!c) return;
+  document.getElementById('claimTitle').textContent = `${c.claim_no} · ${c.client_name}`;
+  document.getElementById('claimBody').innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="k">Claimed</div><div class="v">${fmt.money(c.claimed_amount)}</div>
+        <div class="s">${fmt.title(c.claim_type)}</div></div>
+      <div class="stat"><div class="k">Approved</div>
+        <div class="v">${Number(c.approved_amount) ? fmt.money(c.approved_amount) : '—'}</div>
+        <div class="s">${esc(c.assessed_by_name || 'not yet assessed')}</div></div>
+      <div class="stat"><div class="k">Loan balance</div><div class="v">${fmt.money(c.outstanding_balance)}</div>
+        <div class="s">${esc(c.loan_no)}</div></div>
+      <div class="stat"><div class="k">Status</div>
+        <div class="v" style="font-size:18px">${fmt.title(c.status)}</div>
+        <div class="s">lodged ${fmt.date(c.lodged_at)}</div></div>
+    </div>
+    <dl class="kv">
+      <dt>Policy</dt><dd>${esc(c.policy_no)} (${esc(fmt.title(c.cover_method))} cover)</dd>
+      <dt>Incident date</dt><dd>${fmt.date(c.incident_date)}</dd>
+      <dt>Lodged by</dt><dd>${esc(c.lodged_by_name)}</dd>
+      <dt>Assessed by</dt><dd>${esc(c.assessed_by_name || '—')}</dd>
+      ${Number(c.loan_settled) ? `<dt>Applied to loan</dt><dd>${fmt.money(c.loan_settled)}</dd>` : ''}
+      ${Number(c.paid_to_family) ? `<dt>Paid to family</dt><dd>${fmt.money(c.paid_to_family)}</dd>` : ''}
+      ${c.decision_notes ? `<dt>Notes</dt><dd>${esc(c.decision_notes)}</dd>` : ''}
+    </dl>`;
+  openOverlay('claimModal');
+}
+</script>
+</body>
+</html>

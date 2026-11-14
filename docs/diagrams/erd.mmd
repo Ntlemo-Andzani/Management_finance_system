@@ -1,0 +1,213 @@
+%% MFMS — Entity Relationship Diagram (logical database design)
+erDiagram
+    BRANCHES ||--o{ USERS : "employs"
+    BRANCHES ||--o{ CLIENTS : "serves"
+    BRANCHES ||--o{ CLIENT_GROUPS : "hosts"
+    BRANCHES ||--o{ LOANS : "books"
+
+    USERS ||--o{ CLIENTS : "is officer for"
+    USERS ||--o{ LOANS : "captures"
+    USERS ||--o{ REPAYMENTS : "receipts"
+    USERS ||--o{ SAVINGS_TRANSACTIONS : "posts"
+    USERS ||--o{ AUDIT_LOGS : "acts in"
+
+    CLIENTS ||--o{ LOANS : "borrows"
+    CLIENTS ||--o{ SAVINGS_ACCOUNTS : "holds"
+    CLIENTS ||--o{ NOTIFICATIONS : "receives"
+    CLIENTS ||--o{ BENEFICIARIES : "nominates"
+    CLIENTS ||--o{ INSURANCE_POLICIES : "is covered by"
+    CLIENTS }o--o{ CLIENT_GROUPS : "belongs to"
+
+    LOAN_PRODUCTS ||--o{ LOANS : "prices"
+
+    LOANS ||--|{ REPAYMENT_SCHEDULE : "is repaid over"
+    LOANS ||--o{ REPAYMENTS : "is settled by"
+    LOANS ||--o{ LOAN_GUARANTORS : "is secured by"
+    LOANS ||--o{ LOAN_COLLATERAL : "is backed by"
+    LOANS ||--o| INSURANCE_POLICIES : "is insured by"
+
+    INSURANCE_POLICIES ||--o{ INSURANCE_CLAIMS : "is claimed against"
+    USERS ||--o{ INSURANCE_CLAIMS : "lodges and assesses"
+
+    SAVINGS_ACCOUNTS ||--o{ SAVINGS_TRANSACTIONS : "records"
+
+    BRANCHES {
+        int id PK
+        varchar code UK
+        varchar name
+        varchar address
+        varchar phone
+    }
+    USERS {
+        int id PK
+        int branch_id FK
+        varchar full_name
+        varchar email UK
+        varchar password_hash
+        enum role "admin|manager|officer|teller"
+        boolean is_active
+        datetime last_login_at
+    }
+    CLIENTS {
+        int id PK
+        varchar client_no UK
+        int branch_id FK
+        int officer_id FK
+        varchar first_name
+        varchar last_name
+        varchar national_id UK
+        date date_of_birth
+        varchar phone
+        decimal monthly_income
+        enum status "pending|active|inactive|blacklisted"
+    }
+    CLIENT_GROUPS {
+        int id PK
+        int branch_id FK
+        varchar name
+        enum meeting_day
+    }
+    LOAN_PRODUCTS {
+        int id PK
+        varchar code UK
+        varchar name
+        decimal interest_rate
+        enum interest_method "flat|reducing"
+        enum repayment_frequency "weekly|biweekly|monthly"
+        decimal min_amount
+        decimal max_amount
+        decimal processing_fee_pct
+        decimal penalty_rate_pct
+        decimal insurance_rate_pct
+        enum insurance_method "none|flat|declining"
+    }
+    LOANS {
+        int id PK
+        varchar loan_no UK
+        int client_id FK
+        int product_id FK
+        int officer_id FK
+        int approved_by FK
+        decimal principal
+        decimal interest_rate
+        int term_months
+        int installments
+        decimal insurance_premium
+        decimal total_interest
+        decimal total_payable
+        decimal amount_paid
+        decimal outstanding_balance
+        date maturity_date
+        enum status "pending|approved|rejected|active|closed|defaulted|written_off"
+    }
+    REPAYMENT_SCHEDULE {
+        int id PK
+        int loan_id FK
+        int installment_no
+        date due_date
+        decimal principal_due
+        decimal interest_due
+        decimal penalty_due
+        decimal total_due
+        decimal principal_paid
+        decimal interest_paid
+        enum status "pending|partial|paid|overdue"
+    }
+    REPAYMENTS {
+        int id PK
+        varchar receipt_no UK
+        int loan_id FK
+        decimal amount
+        decimal principal_component
+        decimal interest_component
+        decimal penalty_component
+        date payment_date
+        enum method "cash|bank|mobile_money"
+        int received_by FK
+    }
+    LOAN_GUARANTORS {
+        int id PK
+        int loan_id FK
+        varchar full_name
+        varchar national_id
+        varchar phone
+        varchar relationship
+    }
+    LOAN_COLLATERAL {
+        int id PK
+        int loan_id FK
+        varchar description
+        decimal estimated_value
+    }
+    SAVINGS_ACCOUNTS {
+        int id PK
+        varchar account_no UK
+        int client_id FK
+        decimal interest_rate
+        decimal balance
+        enum status "active|dormant|closed"
+    }
+    SAVINGS_TRANSACTIONS {
+        int id PK
+        int account_id FK
+        enum type "deposit|withdrawal|interest|fee"
+        decimal amount
+        decimal balance_after
+        date txn_date
+        int performed_by FK
+    }
+    NOTIFICATIONS {
+        int id PK
+        int client_id FK
+        int loan_id FK
+        enum channel "sms|email|system"
+        varchar message
+        enum status "queued|sent|failed"
+    }
+    AUDIT_LOGS {
+        int id PK
+        int user_id FK
+        varchar action
+        varchar entity
+        int entity_id
+        json details
+        timestamp created_at
+    }
+    BENEFICIARIES {
+        int id PK
+        int client_id FK
+        varchar full_name
+        enum relationship "spouse|child|parent|sibling|other"
+        varchar national_id
+        varchar phone
+        decimal share_pct "active shares must total 100"
+        boolean is_active
+    }
+    INSURANCE_POLICIES {
+        int id PK
+        varchar policy_no UK
+        int loan_id FK,UK
+        int client_id FK
+        enum cover_method "flat|declining"
+        decimal cover_amount
+        decimal premium
+        decimal premium_rate_pct
+        date start_date
+        date end_date
+        enum status "active|lapsed|claimed|expired|cancelled"
+    }
+    INSURANCE_CLAIMS {
+        int id PK
+        varchar claim_no UK
+        int policy_id FK
+        enum claim_type "death|permanent_disability|retrenchment"
+        date incident_date
+        date lodged_at
+        int lodged_by FK
+        decimal claimed_amount
+        decimal approved_amount
+        decimal loan_settled
+        decimal paid_to_family
+        int assessed_by FK
+        enum status "lodged|assessing|approved|rejected|settled"
+    }

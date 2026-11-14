@@ -1,0 +1,116 @@
+%% MFMS — Class Diagram: the credit life and beneficiary subsystem.
+%% Companion to class-diagram.mmd, which covers the core lending engine.
+%%
+%% The point of interest is that Strategy appears here a second time, in the
+%% same shape as the interest strategies, for an unrelated calculation.
+classDiagram
+    direction TB
+
+    %% ---------- STRATEGY: how cover is priced ----------
+    class PremiumStrategy {
+        <<interface>>
+        +name() string
+        +price(params) PremiumQuote
+    }
+    class NoCoverStrategy {
+        +name() string
+        +price(params) PremiumQuote
+    }
+    class FlatCoverStrategy {
+        +name() string
+        +price(params) PremiumQuote
+    }
+    class DecliningCoverStrategy {
+        +name() string
+        +price(params) PremiumQuote
+    }
+    class PremiumQuote {
+        +decimal premium
+        +decimal coverAmount
+        +string coverMethod
+        +string basis
+    }
+    PremiumStrategy <|.. NoCoverStrategy
+    PremiumStrategy <|.. FlatCoverStrategy
+    PremiumStrategy <|.. DecliningCoverStrategy
+    PremiumStrategy ..> PremiumQuote : returns
+
+    %% ---------- SERVICES ----------
+    class InsuranceService {
+        <<Facade>>
+        +static quote(terms) PremiumQuote
+        +static issueForLoan(loan, product, startDate, totalPayable, tx) Policy
+        +static lodgeClaim(data, actor) Claim
+        +static assessClaim(id, decision, actor) Claim
+        +static settleClaim(id, actor) Settlement
+        +static summary() BookSummary
+    }
+    class BeneficiaryService {
+        +static list(clientId) NominationSet
+        +static add(clientId, data, actor) Beneficiary
+        +static update(id, data, actor) Beneficiary
+        +static remove(id, actor) boolean
+        +static splitPayout(clientId, amount) Share[]
+        +static missingNominations() Row[]
+    }
+    class LoanService {
+        <<Facade>>
+        +static preview(terms) Quote
+        +static disburse(loanId, data, actor) Loan
+    }
+
+    %% ---------- REPOSITORIES ----------
+    class BaseRepository {
+        <<abstract>>
+    }
+    class PolicyRepository {
+        +nextPolicyNo(tx) string
+        +forLoan(loanId, tx) Policy
+        +search(filters) Policy[]
+        +bookSummary() BookSummary
+    }
+    class ClaimRepository {
+        +nextClaimNo(tx) string
+        +search(filters) Claim[]
+        +findDetailed(id, tx) Claim
+    }
+    class BeneficiaryRepository {
+        +forClient(clientId, options, tx) Beneficiary[]
+        +activeShare(clientId, options, tx) decimal
+        +missingNominations() Row[]
+    }
+    BaseRepository <|-- PolicyRepository
+    BaseRepository <|-- ClaimRepository
+    BaseRepository <|-- BeneficiaryRepository
+
+    %% ---------- CONTROLLERS ----------
+    class InsuranceController {
+        +summary(req, res)
+        +policies(req, res)
+        +lodge(req, res)
+        +assess(req, res)
+        +settle(req, res)
+    }
+    class BeneficiaryController {
+        +list(req, res)
+        +add(req, res)
+        +remove(req, res)
+        +preview(req, res)
+    }
+
+    class EventBus {
+        <<Observer subject>>
+        +publish(event, payload) void
+    }
+
+    %% ---------- COLLABORATION ----------
+    LoanService ..> InsuranceService : issues cover at disbursement
+    InsuranceService ..> PremiumStrategy : selects by product
+    InsuranceService ..> PolicyRepository
+    InsuranceService ..> ClaimRepository
+    InsuranceService ..> BeneficiaryService : splits the surplus
+    InsuranceService ..> EventBus : publishes claim events
+    BeneficiaryService ..> BeneficiaryRepository
+    BeneficiaryService ..> EventBus : publishes nomination events
+    InsuranceController ..> InsuranceService
+    BeneficiaryController ..> BeneficiaryService

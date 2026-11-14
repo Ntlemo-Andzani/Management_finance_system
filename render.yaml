@@ -1,0 +1,52 @@
+# Render Blueprint — an alternative to filling in the dashboard by hand.
+#
+# With this file in the repository, Render reads the build and start commands
+# from here instead of asking for them, which removes the most common cause of
+# a failed first deploy: a wrong Build Command.
+#
+# To use it: Render dashboard -> New -> Blueprint -> pick this repository.
+# To ignore it: New -> Web Service, and type the two commands in yourself.
+#
+# The four variables marked sync:false are deliberately NOT in this file.
+# Committing a database password or a token-signing key to a repository would
+# publish them, so Render prompts for them and stores them itself.
+
+services:
+  - type: web
+    name: khupfin
+    runtime: node
+    plan: free
+    region: frankfurt          # nearest region to South Africa that Render offers
+
+    # Dependencies live in server/package.json, so install is pointed there.
+    # --omit=dev skips nodemon, which is only used while developing.
+    buildCommand: npm install --prefix server --omit=dev
+    startCommand: node server/src/server.js
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Render supplies the port it expects the service to listen on, and
+      # env.js reads it. Do not pin this to 4000.
+      - key: PORT
+        value: 10000
+
+      # Set in the Render dashboard, not here.
+      #   DATABASE_URL  mysql://user:password@host:4000/database
+      #   JWT_SECRET    node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+      # Managed MySQL refuses an unencrypted connection.
+      - key: DB_SSL
+        value: "true"
+
+      # A free database tier caps concurrent connections well below the
+      # default pool size of 10.
+      - key: DB_POOL_SIZE
+        value: "5"

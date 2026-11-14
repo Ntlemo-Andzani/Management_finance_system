@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loans · KhupFin</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="img/favicon-180.png">
+<meta name="theme-color" content="#0C4A3E">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail"></aside>
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Loans</h1>
+        <p>Capture applications, decide on them, release funds and watch the schedule.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn" id="newLoanBtn">New application</button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Loan number or client name">
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="pending">Pending approval</option>
+        <option value="approved">Approved, awaiting disbursement</option>
+        <option value="active">Active</option>
+        <option value="closed">Settled</option>
+        <option value="rejected">Rejected</option>
+        <option value="written_off">Written off</option>
+      </select>
+    </div>
+
+    <section class="panel">
+      <div class="panel-body is-flush table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Loan</th><th>Client</th><th>Product</th>
+              <th class="t-right">Principal</th><th class="t-right">Balance</th>
+              <th>Repaid</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- new application ------------------------------------------------------ -->
+<div class="overlay" id="newLoanModal">
+  <div class="modal is-wide">
+    <div class="modal-head">
+      <h2>New loan application</h2>
+      <button type="button" data-close="newLoanModal">&times;</button>
+    </div>
+    <form id="loanForm">
+      <div class="modal-body">
+        <div class="grid-2">
+          <div>
+            <div class="field">
+              <label for="client_id">Client</label>
+              <select id="client_id" name="client_id" required></select>
+              <div class="help">Only active clients without an open loan can borrow.</div>
+              <div class="err"></div>
+            </div>
+            <div class="field">
+              <label for="product_id">Loan product</label>
+              <select id="product_id" name="product_id" required></select>
+              <div class="help" id="productHint"></div>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="principal">Amount (R)</label>
+                <input id="principal" name="principal" type="number" step="100" min="1" required>
+                <div class="err"></div>
+              </div>
+              <div class="field">
+                <label for="term_months">Term (months)</label>
+                <input id="term_months" name="term_months" type="number" min="1" step="1" required>
+                <div class="err"></div>
+              </div>
+            </div>
+            <div class="field">
+              <label for="purpose">Purpose of the loan</label>
+              <input id="purpose" name="purpose" placeholder="Stock for the shop, equipment, transport…">
+            </div>
+            <button type="button" class="btn is-ghost" id="previewBtn">Price this loan</button>
+          </div>
+
+          <div>
+            <div class="panel" style="margin:0">
+              <div class="panel-head"><h2>Quote</h2><span class="hint" id="quoteMethod"></span></div>
+              <div class="panel-body" id="quote">
+                <p style="color:var(--ink-soft);font-size:14px;margin:0">
+                  Choose a product, amount and term, then price the loan to see the instalment and the full schedule before you commit the client to it.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn is-ghost" data-close="newLoanModal">Cancel</button>
+        <button type="submit" class="btn">Submit for approval</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- loan detail ----------------------------------------------------------- -->
+<div class="overlay" id="loanModal">
+  <div class="modal is-wide">
+    <div class="modal-head">
+      <h2 id="loanTitle">Loan</h2>
+      <button type="button" data-close="loanModal">&times;</button>
+    </div>
+    <div class="modal-body" id="loanBody"></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+let products = [];
+
+bootPage(async () => {
+  const [prodRes, clientRes] = await Promise.all([
+    Api.get('/loan-products'),
+    Api.get('/clients?status=active&limit=500'),
+  ]);
+  products = prodRes.data;
+
+  document.getElementById('product_id').innerHTML =
+    products.map((p) => `<option value="${p.id}">${esc(p.name)} — ${p.interest_rate}% ${p.interest_method}</option>`).join('');
+  document.getElementById('client_id').innerHTML =
+    `<option value="">Select a client…</option>` +
+    clientRes.data.map((c) => `<option value="${c.id}">${esc(c.first_name)} ${esc(c.last_name)} (${esc(c.client_no)})</option>`).join('');
+
+  describeProduct();
+  await load();
+});
+
+document.getElementById('product_id').addEventListener('change', describeProduct);
+document.getElementById('newLoanBtn').addEventListener('click', () => openOverlay('newLoanModal'));
+document.getElementById('statusFilter').addEventListener('change', load);
+let timer;
+document.getElementById('search').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 250); });
+
+function describeProduct() {
+  const p = products.find((x) => x.id === Number(document.getElementById('product_id').value));
+  if (!p) return;
+  document.getElementById('productHint').textContent =
+    `${fmt.money(p.min_amount)}–${fmt.money(p.max_amount)} · ${p.min_term_months}–${p.max_term_months} months · ${p.repayment_frequency} instalments · ${p.processing_fee_pct}% fee · ${p.penalty_rate_pct}% late penalty`;
+}
+
+async function load() {
+  const q = encodeURIComponent(document.getElementById('search').value);
+  const status = document.getElementById('statusFilter').value;
+  const { data } = await Api.get(`/loans?q=${q}&status=${status}`);
+
+  document.getElementById('rows').innerHTML = data.length ? data.map((l) => {
+    const paid = Number(l.total_payable) ? (Number(l.amount_paid) / Number(l.total_payable)) * 100 : 0;
+    return `<tr class="is-clickable" data-id="${l.id}">
+      <td class="num">${esc(l.loan_no)}<span class="sub">${fmt.date(l.application_date)}</span></td>
+      <td>${esc(l.client_name)}<span class="sub num">${esc(l.client_no)}</span></td>
+      <td>${esc(l.product_name)}<span class="sub">${l.interest_rate}% ${esc(l.interest_method)}</span></td>
+      <td class="t-right num">${fmt.money(l.principal)}</td>
+      <td class="t-right num">${fmt.money(l.outstanding_balance)}</td>
+      <td style="min-width:120px">
+        <div class="meter"><span style="width:${Math.min(paid, 100)}%"></span></div>
+        <span class="sub num">${paid.toFixed(0)}%</span>
+      </td>
+      <td>${pill(l.status)}</td>
+    </tr>`;
+  }).join('') : emptyRow(7, 'No loans match', 'Capture an application to get started.');
+
+  document.querySelectorAll('#rows tr[data-id]').forEach((tr) =>
+    tr.addEventListener('click', () => showLoan(tr.dataset.id)));
+}
+
+/* ---- quote ------------------------------------------------------------- */
+document.getElementById('previewBtn').addEventListener('click', async () => {
+  const form = document.getElementById('loanForm');
+  const body = {
+    product_id: document.getElementById('product_id').value,
+    principal: document.getElementById('principal').value,
+    term_months: document.getElementById('term_months').value,
+  };
+  try {
+    const { data } = await Api.post('/loans/preview', body);
+    document.getElementById('quoteMethod').textContent =
+      `${data.product.rate}% ${data.product.method === 'flat' ? 'flat rate' : 'reducing balance'}`;
+    document.getElementById('quote').innerHTML = `
+      <dl class="kv" style="margin-bottom:14px">
+        <dt>Instalment</dt><dd><strong>${fmt.money(data.totals.installmentAmount)}</strong> × ${data.totals.installments}</dd>
+        <dt>Total interest</dt><dd>${fmt.money(data.totals.totalInterest)}</dd>
+        <dt>Processing fee</dt><dd>${fmt.money(data.processingFee)}</dd>
+        <dt>Credit life</dt><dd>${data.insurance.insured
+          ? `${fmt.money(data.insurance.premium)} <span class="sub">${esc(data.insurance.basis)}</span>`
+          : '<span class="sub">not insured</span>'}</dd>
+        <dt>Client receives</dt><dd><strong>${fmt.money(data.netDisbursement)}</strong></dd>
+        <dt>Total payable</dt><dd>${fmt.money(data.totals.totalPayable)}</dd>
+        <dt>First due</dt><dd>${fmt.date(data.totals.firstDueDate)}</dd>
+        <dt>Matures</dt><dd>${fmt.date(data.totals.maturityDate)}</dd>
+      </dl>
+      ${passbook(data.installments.map((r, i) => ({
+        installment_no: r.installmentNo, due_date: r.dueDate,
+        principal_due: r.principalDue, interest_due: r.interestDue, total_due: r.totalDue,
+        status: i === 0 ? 'pending' : 'pending',
+      })), true)}`;
+    showFieldErrors(form, null);
+  } catch (err) {
+    showFieldErrors(form, err.errors);
+    toast(err.message, 'bad');
+  }
+});
+
+document.getElementById('loanForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  try {
+    const res = await Api.post('/loans', formData(form));
+    toast(res.message);
+    form.reset();
+    document.getElementById('quote').innerHTML = '<p style="color:var(--ink-soft);font-size:14px;margin:0">Price a loan to see its schedule.</p>';
+    closeOverlay('newLoanModal');
+    await load();
+  } catch (err) {
+    showFieldErrors(form, err.errors);
+    toast(err.message, 'bad');
+  }
+});
+
+/* ---- the passbook: our signature schedule view -------------------------- */
+function passbook(rows, quoteMode = false) {
+  const head = `<div class="pb-row is-head">
+      <div class="pb-no">#</div><div class="pb-date">Due date</div>
+      <div class="pb-amt">Principal</div><div class="pb-amt">Interest</div>
+      <div class="pb-amt">Instalment</div><div></div>
+    </div>`;
+  const body = rows.map((r) => {
+    const state = r.status || 'pending';
+    const overdue = state !== 'paid' && new Date(r.due_date) < new Date();
+    const cls = state === 'paid' ? 'is-paid' : state === 'partial' ? 'is-partial' : overdue && !quoteMode ? 'is-overdue' : '';
+    const stamp = state === 'paid' ? 'Paid' : state === 'partial' ? 'Part paid' : overdue && !quoteMode ? 'Overdue' : 'Due';
+    return `<div class="pb-row ${cls}">
+      <div class="pb-no">${r.installment_no}</div>
+      <div class="pb-date">${fmt.date(r.due_date)}${r.paid_at ? `<small>Settled ${fmt.date(r.paid_at)}</small>` : ''}</div>
+      <div class="pb-amt pb-hide-sm">${fmt.money(r.principal_due)}</div>
+      <div class="pb-amt pb-hide-sm">${fmt.money(r.interest_due)}</div>
+      <div class="pb-amt">${fmt.money(Number(r.total_due) + Number(r.penalty_due || 0))}</div>
+      <div><span class="pb-stamp">${stamp}</span></div>
+    </div>`;
+  }).join('');
+  return `<div class="passbook">${head}${body}</div>`;
+}
+
+/* ---- loan detail -------------------------------------------------------- */
+async function showLoan(id) {
+  const { data: l } = await Api.get(`/loans/${id}`);
+  document.getElementById('loanTitle').textContent = `${l.loan_no} · ${l.client_name}`;
+  const canDecide = Session.can('admin', 'manager');
+  const paidPct = Number(l.total_payable) ? (Number(l.amount_paid) / Number(l.total_payable)) * 100 : 0;
+
+  let actions = '';
+  if (l.status === 'pending' && canDecide) {
+    actions = `<button class="btn is-small" data-act="approve">Approve</button>
+               <button class="btn is-danger is-small" data-act="reject">Reject</button>`;
+  } else if (l.status === 'approved' && canDecide) {
+    actions = `<button class="btn is-small" data-act="disburse">Disburse funds</button>`;
+  } else if (l.status === 'active') {
+    actions = `<a class="btn is-small" href="repayments.html?loan=${l.id}">Take a payment</a>`;
+    if (Session.can('admin')) actions += ` <button class="btn is-ghost is-small" data-act="writeoff">Write off</button>`;
+  }
+
+  document.getElementById('loanBody').innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="k">Principal</div><div class="v">${fmt.money(l.principal)}</div><div class="s">${l.interest_rate}% ${esc(l.interest_method)}</div></div>
+      <div class="stat"><div class="k">Total payable</div><div class="v">${fmt.money(l.total_payable)}</div><div class="s">${l.installments || '—'} ${esc(l.repayment_frequency)} instalments</div></div>
+      <div class="stat ${Number(l.outstanding_balance) > 0 ? 'is-gold' : ''}"><div class="k">Outstanding</div><div class="v">${fmt.money(l.outstanding_balance)}</div><div class="s">${fmt.money(l.amount_paid)} repaid</div></div>
+      <div class="stat"><div class="k">Status</div><div class="v" style="font-size:18px">${fmt.title(l.status)}</div><div class="s">${l.maturity_date ? `Matures ${fmt.date(l.maturity_date)}` : 'Not yet disbursed'}</div></div>
+    </div>
+
+    <div class="meter" style="margin-bottom:16px"><span style="width:${Math.min(paidPct, 100)}%"></span></div>
+
+    <div class="grid-2" style="margin-bottom:18px">
+      <dl class="kv">
+        <dt>Client</dt><dd>${esc(l.client_name)} (${esc(l.client_no)})</dd>
+        <dt>Product</dt><dd>${esc(l.product_name)}</dd>
+        <dt>Purpose</dt><dd>${esc(l.purpose || '—')}</dd>
+        <dt>Applied</dt><dd>${fmt.date(l.application_date)}</dd>
+        <dt>Captured by</dt><dd>${esc(l.officer_name)}</dd>
+      </dl>
+      <dl class="kv">
+        <dt>Approved by</dt><dd>${esc(l.approver_name || '—')}</dd>
+        <dt>Approved on</dt><dd>${fmt.date(l.approved_at)}</dd>
+        <dt>Disbursed</dt><dd>${fmt.date(l.disbursed_at)}</dd>
+        <dt>Processing fee</dt><dd>${fmt.money(l.processing_fee)}</dd>
+        <dt>Credit life premium</dt><dd>${Number(l.insurance_premium)
+          ? fmt.money(l.insurance_premium) : '<span class="sub">not insured</span>'}</dd>
+        ${l.rejection_reason ? `<dt>Reason</dt><dd>${esc(l.rejection_reason)}</dd>` : ''}
+      </dl>
+    </div>
+
+    <div class="page-actions" style="margin-bottom:18px">${actions}</div>
+
+    ${l.guarantors.length ? `<h3 style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px">Guarantors</h3>
+      <table style="margin-bottom:18px"><tbody>${l.guarantors.map((g) => `<tr><td>${esc(g.full_name)}</td><td>${esc(g.relationship || '')}</td><td class="num">${esc(g.phone || '')}</td></tr>`).join('')}</tbody></table>` : ''}
+
+    <h3 style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px">Repayment schedule</h3>
+    ${l.schedule.length ? passbook(l.schedule) :
+      '<div class="empty"><strong>No schedule yet</strong>The schedule is generated the moment the loan is disbursed.</div>'}`;
+
+  document.querySelectorAll('#loanBody [data-act]').forEach((btn) => {
+    btn.addEventListener('click', () => act(btn.dataset.act, l));
+  });
+  openOverlay('loanModal');
+}
+
+async function act(action, loan) {
+  try {
+    let res;
+    if (action === 'approve') {
+      if (!confirm(`Approve ${loan.loan_no} for ${fmt.money(loan.principal)}?`)) return;
+      res = await Api.post(`/loans/${loan.id}/approve`, {});
+    } else if (action === 'reject') {
+      const reason = prompt('Why is this application being rejected?');
+      if (!reason) return;
+      res = await Api.post(`/loans/${loan.id}/reject`, { reason });
+    } else if (action === 'disburse') {
+      const date = prompt('Disbursement date (YYYY-MM-DD)', fmt.dateInput());
+      if (!date) return;
+      res = await Api.post(`/loans/${loan.id}/disburse`, { disbursement_date: date });
+    } else if (action === 'writeoff') {
+      const reason = prompt('Reason for writing this loan off');
+      if (!reason) return;
+      res = await Api.post(`/loans/${loan.id}/write-off`, { reason });
+    }
+    toast(res.message);
+    closeOverlay('loanModal');
+    await load();
+  } catch (err) {
+    toast(err.message, 'bad');
+  }
+}
+</script>
+</body>
+</html>

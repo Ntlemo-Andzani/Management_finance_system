@@ -1,0 +1,211 @@
+%% MFMS — Class Diagram: the core lending engine and the design patterns in it.
+%% The credit life and beneficiary subsystem has its own diagram, in
+%% class-diagram-insurance.mmd, so that both stay legible at print size.
+%% Singleton | Repository | Strategy | Factory | Observer | Facade (service layer)
+classDiagram
+    direction TB
+
+    %% ---------- SINGLETON ----------
+    class Database {
+        <<Singleton>>
+        -Pool pool
+        -static Database _instance
+        +static getInstance() Database
+        +query(sql, params) Row[]
+        +queryOne(sql, params) Row
+        +transaction(work) any
+        +healthCheck() boolean
+        +close() void
+    }
+
+    %% ---------- REPOSITORY ----------
+    class BaseRepository {
+        <<abstract>>
+        #string table
+        #string[] fillable
+        +findById(id, tx) Row
+        +findAll(options, tx) Row[]
+        +findWhere(clause, params, tx) Row[]
+        +create(data, tx) int
+        +update(id, data, tx) int
+        +remove(id, tx) int
+        +count(clause, params) int
+    }
+    class ClientRepository {
+        +search(filters) Client[]
+        +findDetailed(id) Client
+        +findByNationalId(idNo) Client
+        +nextClientNo() string
+    }
+    class LoanRepository {
+        +search(filters) Loan[]
+        +findDetailed(id, tx) Loan
+        +nextLoanNo(tx) string
+        +portfolioSummary() Summary
+        +monthlyDisbursementTrend() Row[]
+    }
+    class ScheduleRepository {
+        +createMany(loanId, rows, tx) int
+        +forLoan(loanId, tx) Installment[]
+        +outstandingForLoan(loanId, tx) Installment[]
+        +arrears() Row[]
+        +dueBetween(from, to) Row[]
+    }
+    class RepaymentRepository {
+        +nextReceiptNo(tx) string
+        +forLoan(loanId) Repayment[]
+        +recent(filters) Repayment[]
+        +collectionsByDay(days) Row[]
+    }
+    class SavingsRepository {
+        +nextAccountNo(tx) string
+        +listWithClients(filters) Account[]
+        +transactions(accountId, limit) Txn[]
+        +addTransaction(data, tx) void
+    }
+    class UserRepository {
+        +findByEmail(email) User
+        +listWithBranch() User[]
+        +touchLogin(id) void
+    }
+
+    BaseRepository <|-- ClientRepository
+    BaseRepository <|-- LoanRepository
+    BaseRepository <|-- ScheduleRepository
+    BaseRepository <|-- RepaymentRepository
+    BaseRepository <|-- SavingsRepository
+    BaseRepository <|-- UserRepository
+    BaseRepository ..> Database : uses
+
+    %% ---------- STRATEGY ----------
+    class InterestStrategy {
+        <<interface>>
+        +name() string
+        +buildInstallments(params) Installment[]
+        #_reconcile(rows, principal, interest) Installment[]
+    }
+    class FlatRateStrategy {
+        +name() string
+        +buildInstallments(params) Installment[]
+    }
+    class ReducingBalanceStrategy {
+        +name() string
+        +buildInstallments(params) Installment[]
+    }
+    InterestStrategy <|.. FlatRateStrategy
+    InterestStrategy <|.. ReducingBalanceStrategy
+
+
+    %% ---------- FACTORY ----------
+    class ScheduleFactory {
+        <<Factory>>
+        +static periodsFor(termMonths, frequency) int
+        +static create(loanTerms) ScheduleResult
+    }
+    ScheduleFactory ..> InterestStrategy : selects
+    ScheduleFactory ..> Installment : creates
+
+    class Installment {
+        +int installmentNo
+        +date dueDate
+        +decimal principalDue
+        +decimal interestDue
+        +decimal totalDue
+        +decimal balance
+    }
+
+    %% ---------- OBSERVER ----------
+    class EventBus {
+        <<Observer subject>>
+        +on(event, handler) void
+        +publish(event, payload) void
+        +registerObservers() void
+    }
+    class NotificationObserver {
+        +onLoanApproved(payload) void
+        +onLoanDisbursed(payload) void
+        +onRepaymentRecorded(payload) void
+        +onLoanClosed(payload) void
+    }
+    class AuditObserver {
+        +record(action, entity) handler
+    }
+    EventBus o-- NotificationObserver : notifies
+    EventBus o-- AuditObserver : notifies
+
+    %% ---------- SERVICES (Facade over repositories) ----------
+    class LoanService {
+        <<Facade>>
+        +static preview(terms) Quote
+        +static apply(payload, actor) Loan
+        +static approve(loanId, actor) Loan
+        +static reject(loanId, reason, actor) Loan
+        +static disburse(loanId, data, actor) Loan
+        +static writeOff(loanId, reason, actor) Loan
+        +static detail(loanId) LoanDetail
+        -static _assertWithinProductLimits(product, amount, term)
+    }
+    class RepaymentService {
+        <<Facade>>
+        +static calculatePenalty(installment, rate, asOf) decimal
+        +static statement(loanId) Statement
+        +static record(payment, actor) Receipt
+    }
+    class ClientService {
+        +static register(data, actor) Client
+        +static profile(id) ClientProfile
+        +static setStatus(id, status) Client
+    }
+    class SavingsService {
+        +static open(data, actor) Account
+        +static post(txn, actor) Account
+        +static statement(accountId) AccountStatement
+    }
+    class AuthService {
+        +static login(email, password) Session
+        +static createUser(data) User
+        +static changePassword(id, old, new) boolean
+        +static verify(token) Claims
+    }
+    class ReportService {
+        +static dashboard() Dashboard
+        +static arrears() Row[]
+        +static officerPerformance() Row[]
+        +static productMix() Row[]
+    }
+
+    LoanService ..> LoanRepository
+    LoanService ..> ScheduleRepository
+    LoanService ..> ScheduleFactory
+    LoanService ..> EventBus : publishes
+    RepaymentService ..> ScheduleRepository
+    RepaymentService ..> RepaymentRepository
+    RepaymentService ..> LoanRepository
+    RepaymentService ..> EventBus : publishes
+    ClientService ..> ClientRepository
+    SavingsService ..> SavingsRepository
+    AuthService ..> UserRepository
+    ReportService ..> LoanRepository
+
+    %% ---------- CONTROLLERS (MVC) ----------
+    class LoanController {
+        +products(req, res)
+        +list(req, res)
+        +preview(req, res)
+        +apply(req, res)
+        +approve(req, res)
+        +disburse(req, res)
+    }
+    class RepaymentController {
+        +statement(req, res)
+        +record(req, res)
+        +recent(req, res)
+    }
+    class AuthMiddleware {
+        +requireAuth(req, res, next)
+        +requireRole(roles) Middleware
+    }
+    LoanController ..> LoanService
+    RepaymentController ..> RepaymentService
+    LoanController ..> AuthMiddleware : guarded by
+    RepaymentController ..> AuthMiddleware : guarded by

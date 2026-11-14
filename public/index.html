@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · KhupFin</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="img/favicon-180.png">
+<meta name="theme-color" content="#0C4A3E">
+</head>
+<body>
+<main class="login-shell">
+  <section class="login-brandside">
+    <div>
+      <img class="login-logo" src="img/khupfin-logo-light.png"
+           alt="KhupFin — Financial Infrastructure" width="900" height="496">
+      <h1>The branch ledger, kept for you.</h1>
+      <p>Register a client, price a loan, generate the schedule, take the payment at the counter — and see the arrears before they grow.</p>
+      <div class="login-figures">
+        <div><span>4</span><small>Loan products</small></div>
+        <div><span>3</span><small>Branches</small></div>
+        <div><span>2</span><small>Interest methods</small></div>
+      </div>
+    </div>
+    <p style="font-size:12.5px;color:#7FA396">KhupFin Microfinance Management System</p>
+  </section>
+
+  <section class="login-formside">
+    <div class="login-card">
+      <h2>Sign in</h2>
+      <p>Use your branch account.</p>
+      <form id="loginForm" novalidate>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="username" required>
+          <div class="err"></div>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <div class="err"></div>
+        </div>
+        <button class="btn is-block" type="submit" id="submitBtn">Sign in</button>
+      </form>
+
+      <div class="demo-users">
+        <b>Demo accounts — tap to fill</b>
+        <button type="button" data-email="admin@mfms.co.za" data-password="Admin@123">admin@mfms.co.za · Admin@123 · full access</button>
+        <button type="button" data-email="manager@mfms.co.za" data-password="Manager@123">manager@mfms.co.za · Manager@123 · approves loans</button>
+        <button type="button" data-email="officer@mfms.co.za" data-password="Officer@123">officer@mfms.co.za · Officer@123 · captures clients</button>
+        <button type="button" data-email="teller@mfms.co.za" data-password="Teller@123">teller@mfms.co.za · Teller@123 · takes payments</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+if (Session.token) window.location.href = 'dashboard.html';
+
+document.querySelectorAll('.demo-users button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.getElementById('email').value = b.dataset.email;
+    document.getElementById('password').value = b.dataset.password;
+  });
+});
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const button = document.getElementById('submitBtn');
+  button.disabled = true;
+  button.textContent = 'Signing in…';
+  try {
+    const res = await Api.post('/auth/login', formData(form));
+    Session.save(res.token, res.user);
+    window.location.href = 'dashboard.html';
+  } catch (err) {
+    showFieldErrors(form, err.errors);
+    toast(err.message, 'bad');
+    button.disabled = false;
+    button.textContent = 'Sign in';
+  }
+});
+</script>
+</body>
+</html>

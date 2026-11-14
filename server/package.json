@@ -1,0 +1,39 @@
+{
+  "name": "mfms-server",
+  "version": "1.0.0",
+  "description": "Microfinance Management System - REST API server (Node.js + Express + MySQL)",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node tests/interest.test.js",
+    "e2e": "node tests/e2e.js",
+    "seed:demo": "node scripts/seed-demo.js",
+    "db:setup": "node scripts/db-setup.js",
+    "db:schema": "node scripts/db-setup.js --schema",
+    "db:check": "node scripts/db-setup.js --dry-run",
+    "set-password": "node scripts/set-password.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "microfinance",
+    "loans",
+    "express",
+    "mysql"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

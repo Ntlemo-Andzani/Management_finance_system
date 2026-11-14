@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MFMS — CRC Cards</title>
+<style>
+  :root{--ink:#10201C;--soft:#5A6B66;--line:#C9D2CC;--brand:#0C4A3E;--paper:#F3F4F2}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+       font-family:'Segoe UI',system-ui,sans-serif;line-height:1.45}
+  header{padding:36px 40px 22px;background:#fff;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:24px}
+  header p{margin:6px 0 0;color:var(--soft);max-width:74ch;font-size:14px}
+  main{padding:28px 40px 70px;display:grid;
+       grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:18px;max-width:1300px;margin:0 auto}
+  .card{background:#fff;border:1px solid var(--line);border-radius:4px;overflow:hidden;
+        display:flex;flex-direction:column;break-inside:avoid}
+  .card h2{margin:0;padding:12px 16px 4px;font-size:15.5px}
+  .card .kind{padding:0 16px 12px;font-size:11px;letter-spacing:.08em;
+              text-transform:uppercase;color:var(--brand);font-weight:600}
+  .split{display:grid;grid-template-columns:1.35fr 1fr;border-top:1px solid var(--line);flex:1}
+  .split > div{padding:12px 16px}
+  .split > div + div{border-left:1px solid var(--line);background:#FBFCFB}
+  .split h3{margin:0 0 7px;font-size:10.5px;letter-spacing:.09em;
+            text-transform:uppercase;color:var(--soft);font-weight:600}
+  ul{margin:0;padding-left:16px}
+  li{font-size:13px;margin-bottom:5px}
+  .split > div + div li{color:#3C4B46}
+  @media print{
+    body{background:#fff}
+    main{grid-template-columns:repeat(2,1fr);padding:16px}
+    header{padding:16px}
+  }
+</style></head>
+<body>
+<header>
+  <h1>Microfinance Management System — CRC Cards</h1>
+  <p>One card per class in the delivered application. Each lists what the class is answerable for and
+     which other classes it must work with to meet those responsibilities. Cards are grouped by the layer
+     the class belongs to: infrastructure, data access, domain, application, cross-cutting and presentation.</p>
+</header>
+<main>
+<article class="card">
+  <h2>Database</h2>
+  <div class="kind">Infrastructure — Singleton</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Hold the single MySQL connection pool for the whole process</li>
+      <li>Execute parameterised queries and return rows</li>
+      <li>Open, commit and roll back transactions on behalf of services</li>
+      <li>Report whether the database is reachable (health check)</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>mysql2 driver</li>
+      <li>env configuration</li>
+      <li>every Repository</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>BaseRepository</h2>
+  <div class="kind">Data access — Repository</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Provide find, create, update, delete and count for one table</li>
+      <li>Restrict writes to an explicit list of fillable columns</li>
+      <li>Accept an open transaction so several repositories can share one</li>
+      <li>Keep all SQL out of the service and controller layers</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>Database</li>
+      <li>concrete repositories</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>ClientRepository</h2>
+  <div class="kind">Data access</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Search the client register by name, number, phone or ID</li>
+      <li>Fetch a client joined to their branch and officer</li>
+      <li>Detect a duplicate national ID before registration</li>
+      <li>Issue the next sequential client number</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>BaseRepository</li>
+      <li>Database</li>
+      <li>ClientService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>LoanRepository</h2>
+  <div class="kind">Data access</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Search and filter loans with client and product detail</li>
+      <li>Issue the next sequential loan number inside a transaction</li>
+      <li>Summarise the portfolio for the dashboard</li>
+      <li>Return the six-month disbursement trend</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>BaseRepository</li>
+      <li>LoanService</li>
+      <li>ReportService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>ScheduleRepository</h2>
+  <div class="kind">Data access</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Bulk-insert a generated repayment schedule in one round trip</li>
+      <li>Return outstanding instalments for a loan, oldest first</li>
+      <li>Produce the arrears register and the instalments-due list</li>
+      <li>Flag instalments that have passed their due date</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>BaseRepository</li>
+      <li>LoanService</li>
+      <li>RepaymentService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>InterestStrategy</h2>
+  <div class="kind">Domain — Strategy interface</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Declare a single way to turn loan terms into instalments</li>
+      <li>Reconcile rounding so instalments sum exactly to the total</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>FlatRateStrategy</li>
+      <li>ReducingBalanceStrategy</li>
+      <li>ScheduleFactory</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>FlatRateStrategy</h2>
+  <div class="kind">Domain — Strategy</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Charge interest on the original principal for the whole term</li>
+      <li>Split principal and interest evenly across instalments</li>
+      <li>Absorb any rounding remainder into the final instalment</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>InterestStrategy</li>
+      <li>ScheduleFactory</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>ReducingBalanceStrategy</h2>
+  <div class="kind">Domain — Strategy</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Accrue interest only on the outstanding balance</li>
+      <li>Compute a level annuity instalment (EMI)</li>
+      <li>Guarantee the closing balance is exactly zero</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>InterestStrategy</li>
+      <li>ScheduleFactory</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>ScheduleFactory</h2>
+  <div class="kind">Domain — Factory</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Convert a term in months into instalments for the frequency</li>
+      <li>Select the interest strategy the product calls for</li>
+      <li>Attach real due dates, handling short months correctly</li>
+      <li>Return the schedule with totals: interest, payable, maturity</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>InterestStrategy</li>
+      <li>LoanService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>LoanService</h2>
+  <div class="kind">Application — Facade</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Quote a loan without saving anything</li>
+      <li>Enforce product limits on amount and term</li>
+      <li>Refuse a second application while one is open</li>
+      <li>Approve or reject, keeping capture and approval separate</li>
+      <li>Disburse: generate the schedule and activate the loan in one transaction</li>
+      <li>Publish loan events for observers to act on</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>LoanRepository</li>
+      <li>ScheduleRepository</li>
+      <li>ScheduleFactory</li>
+      <li>EventBus</li>
+      <li>ClientRepository</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>RepaymentService</h2>
+  <div class="kind">Application — Facade</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>State what a client owes today, including accrued penalty</li>
+      <li>Cap a penalty at the value of the unpaid instalment</li>
+      <li>Allocate a payment: penalty, then interest, then principal</li>
+      <li>Roll surplus forward and return any true overpayment</li>
+      <li>Close the loan when the balance reaches zero</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>ScheduleRepository</li>
+      <li>RepaymentRepository</li>
+      <li>LoanRepository</li>
+      <li>EventBus</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>ClientService</h2>
+  <div class="kind">Application</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Register a client and allocate their client number</li>
+      <li>Block a duplicate national ID with a useful message</li>
+      <li>Change client status, refusing to deactivate a live borrower</li>
+      <li>Assemble the profile: details, loans and savings together</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>ClientRepository</li>
+      <li>LoanRepository</li>
+      <li>SavingsRepository</li>
+      <li>EventBus</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>SavingsService</h2>
+  <div class="kind">Application</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Open a passbook account with an optional opening deposit</li>
+      <li>Post deposits, withdrawals, interest and fees</li>
+      <li>Lock the account row so concurrent postings cannot overdraw it</li>
+      <li>Produce a running-balance statement</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>SavingsRepository</li>
+      <li>Database</li>
+      <li>EventBus</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>AuthService</h2>
+  <div class="kind">Application — Security</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Verify a password against its bcrypt hash</li>
+      <li>Give one identical message for a wrong email or password</li>
+      <li>Issue and verify signed JWT session tokens</li>
+      <li>Create staff accounts and change passwords</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>UserRepository</li>
+      <li>AuthMiddleware</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>EventBus</h2>
+  <div class="kind">Cross-cutting — Observer</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Accept published domain events from the services</li>
+      <li>Notify every registered observer without the publisher knowing them</li>
+      <li>Deliver asynchronously so a failing observer cannot break a payment</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>NotificationObserver</li>
+      <li>AuditObserver</li>
+      <li>LoanService</li>
+      <li>RepaymentService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>NotificationObserver</h2>
+  <div class="kind">Cross-cutting — Observer</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Queue a client SMS on approval, rejection, disbursement, receipt and settlement</li>
+      <li>Write plain messages a borrower can act on</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>EventBus</li>
+      <li>NotificationRepository</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>AuditObserver</h2>
+  <div class="kind">Cross-cutting — Observer</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Record who did what, to which record, and when</li>
+      <li>Store the supporting detail as JSON for later inspection</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>EventBus</li>
+      <li>AuditRepository</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>PremiumStrategy</h2>
+  <div class="kind">Domain — Strategy interface</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Declare one way to turn loan terms into a credit life premium</li>
+      <li>Return a quote carrying the premium, the sum assured and how it was derived</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>FlatCoverStrategy</li>
+      <li>DecliningCoverStrategy</li>
+      <li>NoCoverStrategy</li>
+      <li>InsuranceService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>FlatCoverStrategy</h2>
+  <div class="kind">Domain — Strategy</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Hold the sum assured at the full amount repayable for the whole term</li>
+      <li>Charge the premium on that cover for each year of the term</li>
+      <li>Leave a surplus for the family when a claim comes late in the loan</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>PremiumStrategy</li>
+      <li>InsuranceService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>DecliningCoverStrategy</h2>
+  <div class="kind">Domain — Strategy</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Track the sum assured against the outstanding balance</li>
+      <li>Charge the premium on average exposure rather than the full amount</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>PremiumStrategy</li>
+      <li>InsuranceService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>NoCoverStrategy</h2>
+  <div class="kind">Domain — Strategy (Null Object)</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Price an uninsured product at zero without returning null</li>
+      <li>Spare every caller from branching on the absence of cover</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>PremiumStrategy</li>
+      <li>InsuranceService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>InsuranceService</h2>
+  <div class="kind">Application — Facade</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Price cover for a quote without saving anything</li>
+      <li>Issue a policy inside the disbursement transaction, never after it</li>
+      <li>Refuse a claim dated before cover began or in the future</li>
+      <li>Allow only one open claim against a policy at a time</li>
+      <li>Settle a claim: clear the loan, then split the surplus to the family</li>
+      <li>Publish claim events for the notification and audit observers</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>PremiumStrategy</li>
+      <li>PolicyRepository</li>
+      <li>ClaimRepository</li>
+      <li>BeneficiaryService</li>
+      <li>LoanRepository</li>
+      <li>EventBus</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>BeneficiaryService</h2>
+  <div class="kind">Application</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Keep a client's active nominations totalling exactly 100%</li>
+      <li>Refuse a nomination that would push the shares past 100%</li>
+      <li>Retire a nomination rather than delete it, so history survives a later claim</li>
+      <li>Split a payout across the shares, sending the rounding remainder to the largest</li>
+      <li>List clients holding money with nobody nominated</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>BeneficiaryRepository</li>
+      <li>ClientRepository</li>
+      <li>EventBus</li>
+      <li>InsuranceService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>PolicyRepository</h2>
+  <div class="kind">Data access</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Issue the next sequential policy number inside a transaction</li>
+      <li>Compute cover in force, which for a declining policy follows the loan balance</li>
+      <li>Summarise the book: policies, premiums written, cover, claims paid</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>BaseRepository</li>
+      <li>InsuranceService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>ClaimRepository</h2>
+  <div class="kind">Data access</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Issue the next sequential claim number</li>
+      <li>Return claims joined to their policy, loan and client</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>BaseRepository</li>
+      <li>InsuranceService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>BeneficiaryRepository</h2>
+  <div class="kind">Data access</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Return a client's active nominations</li>
+      <li>Total the active shares, optionally excluding one under edit</li>
+      <li>Find active clients with savings or loan exposure and no nomination</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>BaseRepository</li>
+      <li>BeneficiaryService</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>AuthMiddleware</h2>
+  <div class="kind">Presentation — Guard</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Reject any API request without a valid session token</li>
+      <li>Attach the caller's identity and role to the request</li>
+      <li>Enforce role rules per route (requireRole)</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>AuthService</li>
+      <li>every controller</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>LoanController</h2>
+  <div class="kind">Presentation — Controller</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Validate the request body and return field-level errors</li>
+      <li>Delegate all decisions to LoanService</li>
+      <li>Shape the HTTP response and status code</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>LoanService</li>
+      <li>AuthMiddleware</li>
+      <li>validate()</li>
+    </ul></div>
+  </div>
+</article>
+<article class="card">
+  <h2>ReportService</h2>
+  <div class="kind">Application — Reporting</div>
+  <div class="split">
+    <div><h3>Responsibilities</h3><ul>
+      <li>Compute portfolio totals and portfolio at risk</li>
+      <li>Rank officers by disbursement and recovery</li>
+      <li>Break the book down by product</li>
+    </ul></div>
+    <div><h3>Collaborators</h3><ul>
+      <li>LoanRepository</li>
+      <li>ScheduleRepository</li>
+      <li>RepaymentRepository</li>
+    </ul></div>
+  </div>
+</article>
+</main>
+</body>
+</html>

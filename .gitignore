@@ -1,0 +1,23 @@
+# Never commit real configuration — it holds the database password and the key
+# that signs session tokens. server/.env.example is committed in its place.
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
+# Certificate authority files downloaded from a database provider.
+certs/
+*.pem
+
+node_modules/
+npm-debug.log*
+*.log
+
+# Local editor and OS clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

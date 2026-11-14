@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard · KhupFin</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="img/favicon-180.png">
+<meta name="theme-color" content="#0C4A3E">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail"></aside>
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Dashboard</h1>
+        <p id="greeting">Portfolio position as at today.</p>
+      </div>
+      <div class="page-actions">
+        <a class="btn is-ghost" href="repayments.html">Take a payment</a>
+        <a class="btn" href="loans.html">New application</a>
+      </div>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Disbursements</h2>
+          <span class="hint">Last 6 months</span>
+        </div>
+        <div class="panel-body"><div class="bars" id="trend"></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Collections</h2>
+          <span class="hint">Last 14 days</span>
+        </div>
+        <div class="panel-body"><div class="bars" id="collections"></div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Arrears needing a call today</h2>
+        <a class="btn is-ghost is-small" href="reports.html">Full arrears report</a>
+      </div>
+      <div class="panel-body is-flush table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th><th>Loan</th><th>Officer</th>
+              <th class="t-right">Overdue</th><th class="t-right">Days late</th><th>Due date</th>
+            </tr>
+          </thead>
+          <tbody id="arrears"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+bootPage(async () => {
+  const user = Session.user;
+  document.getElementById('greeting').textContent =
+    `Signed in as ${user.full_name}. Portfolio position as at ${fmt.date(new Date())}.`;
+
+  const { data } = await Api.get('/reports/dashboard');
+  const s = data.summary;
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat">
+      <div class="k">Outstanding portfolio</div>
+      <div class="v">${fmt.money(s.outstanding)}</div>
+      <div class="s">${s.active_loans} active loans</div>
+    </div>
+    <div class="stat">
+      <div class="k">Disbursed to date</div>
+      <div class="v">${fmt.money(s.total_disbursed)}</div>
+      <div class="s">${fmt.money(s.total_collected)} collected back</div>
+    </div>
+    <div class="stat is-rust">
+      <div class="k">Portfolio at risk</div>
+      <div class="v">${fmt.pct(data.par.ratio)}</div>
+      <div class="s">${fmt.money(data.par.amount)} across ${data.par.loans_in_arrears} loans</div>
+    </div>
+    <div class="stat is-gold">
+      <div class="k">Awaiting decision</div>
+      <div class="v">${s.pending_loans}</div>
+      <div class="s">applications in the queue</div>
+    </div>
+    <div class="stat">
+      <div class="k">Active clients</div>
+      <div class="v">${s.active_clients}</div>
+      <div class="s">${fmt.money(s.total_savings)} held in savings</div>
+    </div>`;
+
+  drawBars('trend', data.trend.map((r) => ({ label: r.period.slice(5), value: Number(r.disbursed) })),
+           'No loans disbursed in the last six months');
+  drawBars('collections', data.collections.map((r) => ({ label: fmt.date(r.day).slice(0, 6), value: Number(r.collected) })),
+           'No payments received in the last two weeks');
+
+  const rows = data.arrears;
+  document.getElementById('arrears').innerHTML = rows.length ? rows.map((r) => `
+    <tr>
+      <td>${esc(r.client_name)}<span class="sub">${esc(r.phone || '')}</span></td>
+      <td class="num">${esc(r.loan_no)}</td>
+      <td>${esc(r.officer_name)}</td>
+      <td class="t-right num">${fmt.money(r.amount_overdue)}</td>
+      <td class="t-right"><span class="pill ${r.days_overdue > 30 ? 'is-rust' : 'is-gold'}">${r.days_overdue}d</span></td>
+      <td>${fmt.date(r.due_date)}</td>
+    </tr>`).join('')
+    : emptyRow(6, 'Nothing in arrears', 'Every instalment due so far has been paid.');
+});
+
+function drawBars(id, series, emptyText) {
+  const host = document.getElementById(id);
+  if (!series.length) { host.outerHTML = `<div class="empty" id="${id}"><strong>Nothing to chart yet</strong>${emptyText}</div>`; return; }
+  const max = Math.max(...series.map((p) => p.value), 1);
+  host.innerHTML = series.map((p) => `
+    <div class="bar" title="${fmt.money(p.value)}">
+      <b>${fmt.compact(p.value)}</b>
+      <i style="height:${Math.max((p.value / max) * 100, 2)}%"></i>
+      <small>${esc(p.label)}</small>
+    </div>`).join('');
+}
+</script>
+</body>
+</html>

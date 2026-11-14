@@ -1,0 +1,50 @@
+%% MFMS — Sequence diagram: teller records a repayment at the counter.
+sequenceDiagram
+    autonumber
+    actor Teller
+    participant UI as Repayments screen
+    participant API as Express router
+    participant MW as AuthMiddleware
+    participant Ctrl as RepaymentController
+    participant Svc as RepaymentService
+    participant DB as Database — Singleton
+    participant Bus as EventBus
+    participant Obs as Notification + Audit observers
+
+    Teller->>UI: selects loan
+    UI->>API: GET /api/loans/:id/statement
+    API->>MW: verify JWT + role
+    MW-->>API: claims {id, role}
+    API->>Ctrl: statement()
+    Ctrl->>Svc: statement(loanId)
+    Svc->>DB: read loan + outstanding instalments
+    DB-->>Svc: rows
+    Svc->>Svc: calculatePenalty() per overdue instalment
+    Svc-->>UI: amount due today, payoff figure
+
+    Teller->>UI: enters amount received, submits
+    UI->>API: POST /api/repayments
+    API->>MW: verify JWT + role (teller allowed)
+    API->>Ctrl: record()
+    Ctrl->>Ctrl: validate(body)
+    Ctrl->>Svc: record(payment, actor)
+
+    Svc->>DB: BEGIN TRANSACTION
+    loop oldest unpaid instalment first
+        Svc->>Svc: allocate penalty, then interest, then principal
+        Svc->>DB: UPDATE repayment_schedule
+    end
+    Svc->>DB: INSERT repayments (receipt_no)
+    Svc->>DB: UPDATE loans (amount_paid, outstanding_balance, status)
+    DB-->>Svc: COMMIT
+
+    Svc->>Bus: publish("repayment.recorded")
+    alt balance reaches zero
+        Svc->>Bus: publish("loan.closed")
+    end
+    Bus-->>Obs: asynchronous notification (does not block the receipt)
+    Obs->>DB: INSERT notifications + audit_logs
+
+    Svc-->>Ctrl: receipt
+    Ctrl-->>UI: 201 Created + receipt payload
+    UI-->>Teller: printable receipt, updated balance

@@ -1,0 +1,71 @@
+%% MFMS — Data Flow Diagram (Level 1)
+%% The system exploded into its six major processes and seven data stores.
+flowchart TB
+    OFFICER([Loan Officer])
+    MANAGER([Branch Manager])
+    TELLER([Teller])
+    ADMIN([Administrator])
+    SMS([SMS Gateway])
+
+    P1["1.0<br/>Authenticate user<br/>and enforce role"]
+    P2["2.0<br/>Manage client<br/>register (KYC)"]
+    P3["3.0<br/>Capture and price<br/>loan application"]
+    P4["4.0<br/>Assess, approve<br/>and disburse"]
+    P5["5.0<br/>Receive repayment<br/>and allocate"]
+    P6["6.0<br/>Manage savings<br/>accounts"]
+    P7["7.0<br/>Produce reports<br/>and notifications"]
+
+    D1[("D1 users")]
+    D2[("D2 clients")]
+    D3[("D3 loan_products")]
+    D4[("D4 loans")]
+    D5[("D5 repayment_schedule")]
+    D6[("D6 repayments")]
+    D7[("D7 savings_accounts / transactions")]
+    D8[("D8 notifications / audit_logs")]
+
+    OFFICER --> P1
+    MANAGER --> P1
+    TELLER  --> P1
+    ADMIN   --> P1
+    P1 -- "credential lookup" --> D1
+    D1 -- "stored hash, role" --> P1
+    P1 -- "session token + role" --> P2
+    P1 -- "session token + role" --> P5
+
+    OFFICER -- "client particulars" --> P2
+    P2 -- "new / amended client" --> D2
+    D2 -- "existing client record" --> P2
+    P2 -- "client record" --> P3
+
+    OFFICER -- "amount, term, product" --> P3
+    D3 -- "rate, limits, method" --> P3
+    P3 -- "priced application" --> D4
+    P3 -- "quoted schedule" --> OFFICER
+
+    MANAGER -- "decision, disbursement date" --> P4
+    D4 -- "application under review" --> P4
+    P4 -- "decision, disbursement totals" --> D4
+    P4 -- "generated instalments" --> D5
+    P4 -- "loan event" --> P7
+
+    TELLER -- "cash received" --> P5
+    D5 -- "outstanding instalments" --> P5
+    P5 -- "allocated amounts" --> D5
+    P5 -- "receipt line" --> D6
+    P5 -- "updated balance" --> D4
+    P5 -- "receipt" --> TELLER
+    P5 -- "payment event" --> P7
+
+    TELLER -- "deposit / withdrawal" --> P6
+    P6 -- "transaction line" --> D7
+    D7 -- "current balance" --> P6
+    P6 -- "passbook balance" --> TELLER
+
+    D4 --> P7
+    D5 --> P7
+    D6 --> P7
+    P7 --> D8
+    P7 -- "dashboard, arrears, PAR" --> MANAGER
+    P7 -- "audit trail" --> ADMIN
+    P7 -- "client message" --> SMS

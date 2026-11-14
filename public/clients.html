@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clients · KhupFin</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="img/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="img/favicon-180.png">
+<meta name="theme-color" content="#0C4A3E">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail"></aside>
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Clients</h1>
+        <p>Search the register, open a profile, or bring a new borrower onto the books.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn" id="newClientBtn">Register a client</button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Name, client number, phone or ID">
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="pending">Pending KYC</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+        <option value="blacklisted">Blacklisted</option>
+      </select>
+    </div>
+
+    <section class="panel">
+      <div class="panel-body is-flush table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th><th>ID number</th><th>Branch</th><th>Officer</th>
+              <th class="t-right">Monthly income</th><th>Loans</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- register ------------------------------------------------------------ -->
+<div class="overlay" id="newClientModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Register a client</h2>
+      <button type="button" data-close="newClientModal">&times;</button>
+    </div>
+    <form id="clientForm">
+      <div class="modal-body">
+        <div class="field-row">
+          <div class="field"><label for="first_name">First name</label><input id="first_name" name="first_name" required><div class="err"></div></div>
+          <div class="field"><label for="last_name">Last name</label><input id="last_name" name="last_name" required><div class="err"></div></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="national_id">ID number</label><input id="national_id" name="national_id" required><div class="help">Used to prevent duplicate registrations.</div><div class="err"></div></div>
+          <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" required><div class="err"></div></div>
+        </div>
+        <div class="field-row-3">
+          <div class="field"><label for="date_of_birth">Date of birth</label><input id="date_of_birth" name="date_of_birth" type="date"><div class="err"></div></div>
+          <div class="field"><label for="gender">Gender</label>
+            <select id="gender" name="gender"><option value="">—</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select>
+          </div>
+          <div class="field"><label for="monthly_income">Monthly income (R)</label><input id="monthly_income" name="monthly_income" type="number" step="0.01" min="0"><div class="err"></div></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="occupation">Occupation</label><input id="occupation" name="occupation"></div>
+          <div class="field"><label for="business_name">Business name</label><input id="business_name" name="business_name"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="email">Email</label><input id="email" name="email" type="email"><div class="err"></div></div>
+          <div class="field"><label for="branch_id">Branch</label><select id="branch_id" name="branch_id"></select></div>
+        </div>
+        <div class="field"><label for="address">Address</label><input id="address" name="address"></div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn is-ghost" data-close="newClientModal">Cancel</button>
+        <button type="submit" class="btn">Register client</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- profile ------------------------------------------------------------- -->
+<div class="overlay" id="profileModal">
+  <div class="modal is-wide">
+    <div class="modal-head">
+      <h2 id="profileTitle">Client</h2>
+      <button type="button" data-close="profileModal">&times;</button>
+    </div>
+    <div class="modal-body" id="profileBody"></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+let branches = [];
+
+bootPage(async () => {
+  branches = (await Api.get('/branches')).data;
+  document.getElementById('branch_id').innerHTML =
+    branches.map((b) => `<option value="${b.id}" ${b.id === Session.user.branch_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
+  await load();
+});
+
+let searchTimer;
+document.getElementById('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(load, 250);
+});
+document.getElementById('statusFilter').addEventListener('change', load);
+
+document.getElementById('newClientBtn').addEventListener('click', () => openOverlay('newClientModal'));
+
+async function load() {
+  const q = encodeURIComponent(document.getElementById('search').value);
+  const status = document.getElementById('statusFilter').value;
+  const { data } = await Api.get(`/clients?q=${q}&status=${status}`);
+
+  document.getElementById('rows').innerHTML = data.length ? data.map((c) => `
+    <tr class="is-clickable" data-id="${c.id}">
+      <td><strong>${esc(c.first_name)} ${esc(c.last_name)}</strong><span class="sub num">${esc(c.client_no)} · ${esc(c.phone)}</span></td>
+      <td class="num">${esc(c.national_id)}</td>
+      <td>${esc(c.branch_name)}</td>
+      <td>${esc(c.officer_name || '—')}</td>
+      <td class="t-right num">${fmt.money(c.monthly_income)}</td>
+      <td class="num">${c.active_loans}</td>
+      <td>${pill(c.status)}</td>
+    </tr>`).join('')
+    : emptyRow(7, 'No clients match that search', 'Try a different name, or register the client.');
+
+  document.querySelectorAll('#rows tr[data-id]').forEach((tr) => {
+    tr.addEventListener('click', () => showProfile(tr.dataset.id));
+  });
+}
+
+document.getElementById('clientForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  try {
+    const res = await Api.post('/clients', formData(form));
+    toast(res.message);
+    form.reset();
+    closeOverlay('newClientModal');
+    await load();
+  } catch (err) {
+    showFieldErrors(form, err.errors);
+    toast(err.message, 'bad');
+  }
+});
+
+async function showProfile(id) {
+  const { data: c } = await Api.get(`/clients/${id}`);
+  document.getElementById('profileTitle').textContent = `${c.first_name} ${c.last_name} · ${c.client_no}`;
+
+  const canDecide = Session.can('admin', 'manager');
+  const statusActions = canDecide ? `
+    <div class="page-actions" style="margin-top:14px">
+      ${c.status !== 'active' ? `<button class="btn is-small" data-status="active">Activate</button>` : ''}
+      ${c.status === 'active' ? `<button class="btn is-ghost is-small" data-status="inactive">Deactivate</button>` : ''}
+      ${c.status !== 'blacklisted' ? `<button class="btn is-danger is-small" data-status="blacklisted">Blacklist</button>` : ''}
+    </div>` : '';
+
+  document.getElementById('profileBody').innerHTML = `
+    <div class="grid-2">
+      <div>
+        <dl class="kv">
+          <dt>Status</dt><dd>${pill(c.status)}</dd>
+          <dt>ID number</dt><dd>${esc(c.national_id)}</dd>
+          <dt>Phone</dt><dd>${esc(c.phone)}</dd>
+          <dt>Email</dt><dd>${esc(c.email || '—')}</dd>
+          <dt>Date of birth</dt><dd>${fmt.date(c.date_of_birth)}</dd>
+          <dt>Occupation</dt><dd>${esc(c.occupation || '—')}</dd>
+          <dt>Business</dt><dd>${esc(c.business_name || '—')}</dd>
+          <dt>Monthly income</dt><dd>${fmt.money(c.monthly_income)}</dd>
+          <dt>Branch</dt><dd>${esc(c.branch_name)}</dd>
+          <dt>Officer</dt><dd>${esc(c.officer_name || '—')}</dd>
+          <dt>Address</dt><dd>${esc(c.address || '—')}</dd>
+        </dl>
+        ${statusActions}
+      </div>
+      <div>
+        <h3 style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px">Loans</h3>
+        ${c.loans.length ? `<div class="table-scroll"><table>
+          <thead><tr><th>Loan</th><th class="t-right">Principal</th><th class="t-right">Balance</th><th>Status</th></tr></thead>
+          <tbody>${c.loans.map((l) => `<tr>
+            <td class="num">${esc(l.loan_no)}<span class="sub">${esc(l.product_name)}</span></td>
+            <td class="t-right num">${fmt.money(l.principal)}</td>
+            <td class="t-right num">${fmt.money(l.outstanding_balance)}</td>
+            <td>${pill(l.status)}</td></tr>`).join('')}</tbody></table></div>`
+          : '<p style="color:var(--ink-soft);font-size:14px">No loans yet.</p>'}
+
+        <h3 style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin:18px 0 8px">Savings</h3>
+        ${c.savings.length ? `<table><thead><tr><th>Account</th><th class="t-right">Balance</th><th>Status</th></tr></thead>
+          <tbody>${c.savings.map((s) => `<tr><td class="num">${esc(s.account_no)}</td>
+            <td class="t-right num">${fmt.money(s.balance)}</td><td>${pill(s.status)}</td></tr>`).join('')}</tbody></table>`
+          : '<p style="color:var(--ink-soft);font-size:14px">No savings account.</p>'}
+      </div>
+    </div>
+
+    <h3 style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin:22px 0 8px">
+      Nominated beneficiaries
+    </h3>
+    <div id="benBlock"><p style="color:var(--ink-soft);font-size:14px">Loading…</p></div>`;
+
+  loadBeneficiaries(id);
+
+  document.querySelectorAll('#profileBody [data-status]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      try {
+        const res = await Api.patch(`/clients/${id}/status`, { status: b.dataset.status });
+        toast(res.message);
+        closeOverlay('profileModal');
+        await load();
+      } catch (err) { toast(err.message, 'bad'); }
+    });
+  });
+
+  openOverlay('profileModal');
+}
+
+/* ---- beneficiaries: who receives the money if the client dies ---------- */
+async function loadBeneficiaries(clientId) {
+  const host = document.getElementById('benBlock');
+  if (!host) return;
+  try {
+    const { data } = await Api.get(`/clients/${clientId}/beneficiaries`);
+    const canEdit = Session.can('admin', 'manager', 'officer');
+
+    // The share bar is the point of this panel: an incomplete nomination is a
+    // payout that cannot be split, so it has to be visible at a glance.
+    const bar = `
+      <div class="meter ${data.is_complete ? '' : 'is-rust'}" style="margin-bottom:6px">
+        <span style="width:${Math.min(data.allocated, 100)}%"></span>
+      </div>
+      <p style="font-size:12.5px;color:${data.is_complete ? 'var(--ink-soft)' : 'var(--rust)'};margin:0 0 12px">
+        ${data.allocated.toFixed(2)}% allocated${data.is_complete
+          ? ' — nomination complete'
+          : ` — ${data.unallocated.toFixed(2)}% unallocated, a payout cannot be split until this reaches 100%`}
+      </p>`;
+
+    const table = data.beneficiaries.length ? `
+      <div class="table-scroll"><table>
+        <thead><tr><th>Name</th><th>Relationship</th><th>Contact</th>
+          <th class="t-right">Share</th>${canEdit ? '<th></th>' : ''}</tr></thead>
+        <tbody>${data.beneficiaries.map((b) => `<tr>
+          <td><strong>${esc(b.full_name)}</strong>${b.national_id
+              ? `<span class="sub num">${esc(b.national_id)}</span>` : ''}</td>
+          <td>${esc(fmt.title(b.relationship))}</td>
+          <td class="num">${esc(b.phone || '—')}</td>
+          <td class="t-right num"><strong>${Number(b.share_pct).toFixed(2)}%</strong></td>
+          ${canEdit ? `<td class="t-right">
+            <button class="btn is-ghost is-small" data-ben-remove="${b.id}">Withdraw</button></td>` : ''}
+        </tr>`).join('')}</tbody>
+      </table></div>`
+      : '<div class="empty"><strong>Nobody nominated</strong>If this client dies, there is no instruction on who receives their savings or any insurance surplus.</div>';
+
+    const form = canEdit && data.unallocated > 0.005 ? `
+      <form id="benForm" style="margin-top:14px">
+        <div class="field-row-3">
+          <div class="field"><label>Full name</label><input name="full_name" required></div>
+          <div class="field"><label>Relationship</label>
+            <select name="relationship">
+              <option value="spouse">Spouse</option><option value="child">Child</option>
+              <option value="parent">Parent</option><option value="sibling">Sibling</option>
+              <option value="other">Other</option>
+            </select></div>
+          <div class="field"><label>Share (%)</label>
+            <input name="share_pct" type="number" step="0.01" min="0.01"
+                   max="${data.unallocated}" value="${data.unallocated.toFixed(2)}" required></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>ID number</label><input name="national_id"></div>
+          <div class="field"><label>Phone</label><input name="phone"></div>
+        </div>
+        <button class="btn is-small" type="submit">Add nomination</button>
+      </form>` : '';
+
+    host.innerHTML = bar + table + form;
+
+    const benForm = document.getElementById('benForm');
+    if (benForm) {
+      benForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const res = await Api.post(`/clients/${clientId}/beneficiaries`, formData(benForm));
+          toast(res.message);
+          await loadBeneficiaries(clientId);
+        } catch (err) {
+          showFieldErrors(benForm, err.errors);
+          toast(err.message, 'bad');
+        }
+      });
+    }
+
+    host.querySelectorAll('[data-ben-remove]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        if (!confirm('Withdraw this nomination?')) return;
+        try {
+          const res = await Api.delete(`/beneficiaries/${b.dataset.benRemove}`);
+          toast(res.message);
+          await loadBeneficiaries(clientId);
+        } catch (err) { toast(err.message, 'bad'); }
+      });
+    });
+  } catch (err) {
+    host.innerHTML = `<p style="color:var(--rust);font-size:14px">${esc(err.message)}</p>`;
+  }
+}
+</script>
+</body>
+</html>
